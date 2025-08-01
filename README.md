@@ -1,0 +1,198 @@
+# llama.cpp Updater & Builder
+
+[![Shell Script Quality Check](https://github.com/mhajder/llama.cpp-updater/workflows/Shell%20Script%20Quality%20Check/badge.svg)](https://github.com/mhajder/llama.cpp-updater/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+A powerful shell script that automatically downloads and updates llama.cpp binaries from the latest GitHub release, or builds from source with optimal GPU acceleration. This tool simplifies the process of keeping your llama.cpp installation up-to-date across different platforms and architectures.
+
+## Features
+
+- **Cross-platform support**: Works seamlessly on Linux and macOS with full architecture detection
+- **Intelligent architecture detection**: Automatically detects x64 and ARM64 architectures for optimal binary selection
+- **Advanced Vulkan support**: Automatically detects Vulkan capabilities and selects appropriate builds on Ubuntu when available
+- **Flexible build options**: Choose between fast binary downloads or optimized source builds with automatic GPU acceleration detection
+- **Smart installation management**: Install to current directory or specify custom paths with automatic directory creation
+- **Safe update process**: Overwrites existing binaries with newer versions while preserving file permissions
+- **Efficient extraction**: Handles zip extraction and intelligently moves binaries from nested `build/bin` structures to target directory
+- **Clean installation**: Automatically removes temporary files, empty directories, and build artifacts after installation
+- **Comprehensive error handling**: Detailed error messages and recovery suggestions for common issues
+
+## Requirements
+
+### For binary downloads (recommended for quick setup):
+- `curl` or `wget` (for downloading files from GitHub releases)
+- `unzip` (for extracting compressed archives)
+- Internet connection to access GitHub API and download assets
+- ~80MB free disk space for downloaded binaries
+
+### For building from source (recommended for maximum performance):
+- `git` (for cloning the llama.cpp repository)
+- `cmake` (build system, version 3.14 or higher required)
+- `make` or equivalent build tools (build-essential on Ubuntu)
+- C++ compiler with C++17 support (gcc 8+, clang 7+, or equivalent)
+- ~2GB free disk space for source code and build artifacts
+- **Optional dependencies for enhanced features**:
+  - `libcurl4-openssl-dev` - enables HTTP/HTTPS model downloading capabilities
+  - `zlib1g-dev` - provides compression support for better performance
+  - `pkg-config` - assists with automatic dependency detection during build
+- **GPU acceleration libraries (automatically detected)**:
+  - CUDA toolkit 11.0+ (for NVIDIA GPU acceleration)
+  - Vulkan SDK and drivers (for cross-vendor GPU support, including AMD and Intel)
+  - OpenCL libraries and drivers (alternative GPU acceleration method)
+  - Metal framework (macOS only, automatically available on Apple Silicon and Intel Macs)
+
+## Usage
+
+### Basic usage (install to current directory):
+```bash
+./update-llama.sh
+```
+
+### Install to a specific directory:
+```bash
+./update-llama.sh /path/to/target/directory
+```
+
+### Build from source (recommended for best performance):
+```bash
+./update-llama.sh --build-from-source ./custom-dir
+```
+
+### Force specific Ubuntu variant:
+```bash
+# Force Vulkan build (Ubuntu x64)
+./update-llama.sh --vulkan ./bin
+
+# Force regular build (disable Vulkan auto-detection)
+./update-llama.sh --force-regular ./bin
+```
+
+### Help:
+```bash
+./update-llama.sh --help
+```
+
+## Supported Systems
+
+| OS | Architecture | Binary Packages | Build from Source |
+|---|---|---|---|
+| Linux (Ubuntu) | x64 | `llama-*-bin-ubuntu-x64.zip`<br>`llama-*-bin-ubuntu-vulkan-x64.zip` | ✅ Auto GPU detection |
+| Linux (Ubuntu) | ARM64 | ❌ Not available | ✅ Full support |
+| macOS | x64 | `llama-*-bin-macos-x64.zip` | ✅ Metal acceleration |
+| macOS | ARM64 | `llama-*-bin-macos-arm64.zip` | ✅ Metal acceleration |
+
+### GPU Acceleration (Build from Source - Optimal Performance)
+| Platform | GPU Support | Auto-detected | Performance Notes |
+|---|---|---|---|
+| Linux | CUDA, Vulkan, OpenCL | ✅ | CUDA preferred for NVIDIA, Vulkan for AMD/Intel |
+| macOS | Metal | ✅ | Native Apple Silicon optimization, Intel Mac support |
+| All Platforms | CPU optimizations | ✅ | SIMD instructions, multi-threading, architecture-specific |
+
+**Advanced GPU Detection Logic**:
+- **CUDA Detection**: Checks for `nvcc` compiler and NVIDIA GPU presence
+- **Vulkan Detection**: Verifies Vulkan loader libraries and functional GPU access
+- **OpenCL Detection**: Searches for OpenCL runtime libraries and compatible devices
+- **Metal Detection**: Automatically enabled on macOS for optimal Apple GPU utilization
+
+**Note**: Binary packages for Ubuntu ARM64 are not provided in official releases, but you can build from source for full ARM64 support.
+
+## Binary Download vs Build from Source
+
+| Feature | Binary Download | Build from Source |
+|---|---|---|
+| **Setup Speed** | ⚡ Very Fast (2-5 minutes) | 🐌 Slow (15-45 minutes) |
+| **Performance** | ✅ Good (pre-optimized) | 🚀 Excellent (hardware-specific) |
+| **GPU Support** | ✅ Pre-selected variants | 🎯 Auto-detected optimal |
+| **Disk Space** | 📦 ~80MB download | 💾 ~2GB (full build) |
+| **Dependencies** | Minimal (curl, unzip) | Full (git, cmake, compiler) |
+| **CURL Support** | ✅ Always included | ✅ If dev libraries available |
+| **Server Features** | ✅ Full server functionality | ✅ If dependencies met |
+| **Customization** | ❌ Fixed build configuration | ✅ Tailored to your hardware |
+| **Ubuntu ARM64** | ❌ Not officially available | ✅ Full support with optimizations |
+| **Latest Features** | 📅 Release schedule dependent | 🔄 Always bleeding edge |
+
+### Recommendations:
+- **Choose Binary Download** if you want quick setup, good performance, and stable releases
+- **Choose Build from Source** if you want maximum performance, have Ubuntu ARM64, need latest features, or have specific GPU requirements
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Missing dependencies for binary downloads**:
+   ```bash
+   # On Ubuntu/Debian
+   sudo apt-get install curl unzip
+   
+   # On macOS with Homebrew
+   brew install curl unzip
+   ```
+
+2. **Missing dependencies for building from source**:
+   ```bash
+   # Essential build tools (Ubuntu/Debian)
+   sudo apt-get install git cmake build-essential
+   
+   # Optional but recommended libraries (Ubuntu/Debian)
+   sudo apt-get install libcurl4-openssl-dev zlib1g-dev
+   
+   # On macOS with Homebrew
+   brew install git cmake curl
+   ```
+
+3. **Permission denied**:
+   ```bash
+   chmod +x update-llama.sh
+   ```
+
+4. **No suitable binary found**:
+   - Check if your system/architecture is supported
+   - Try building from source: `./update-llama.sh --build-from-source`
+   - Verify internet connection
+   - Check GitHub releases page manually
+
+5. **Vulkan detection issues**:
+   ```bash
+   # Install Vulkan tools for detection
+   sudo apt-get install vulkan-utils
+   
+   # Force regular build if Vulkan causes issues
+   ./update-llama.sh --force-regular
+   ```
+
+6. **Build from source fails**:
+   - Ensure all build dependencies are installed
+   - Check available disk space (build requires ~2GB)
+   - Try without GPU acceleration if drivers are problematic
+
+7. **CMake CURL errors** (common on minimal systems):
+   ```bash
+   # Install CURL development libraries for full functionality
+   sudo apt-get install libcurl4-openssl-dev
+   
+   # For systems with conflicting CURL versions
+   sudo apt-get remove libcurl4-gnutls-dev
+   sudo apt-get install libcurl4-openssl-dev
+   ```
+
+8. **Missing development libraries** (comprehensive setup):
+   ```bash
+   # Complete development environment (Ubuntu/Debian)
+   sudo apt-get update
+   sudo apt-get install build-essential git cmake \
+     libcurl4-openssl-dev zlib1g-dev pkg-config \
+     vulkan-utils mesa-vulkan-drivers
+   
+   # Essential build environment (basic requirements)
+   sudo apt-get install build-essential git cmake
+   
+   # macOS complete setup
+   brew install git cmake curl pkg-config
+   xcode-select --install  # Install command line tools
+   ```
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+**Note**: This script downloads and manages llama.cpp binaries. The llama.cpp project itself is subject to its own license terms. Please refer to the [llama.cpp repository](https://github.com/ggml-org/llama.cpp) for information about its licensing.
