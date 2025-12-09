@@ -13,7 +13,7 @@ A powerful shell script that automatically downloads and updates llama.cpp binar
 - **Flexible build options**: Choose between fast binary downloads or optimized source builds with automatic GPU acceleration detection
 - **Smart installation management**: Install to current directory or specify custom paths with automatic directory creation
 - **Safe update process**: Overwrites existing binaries with newer versions while preserving file permissions
-- **Efficient extraction**: Handles zip extraction and intelligently moves binaries from nested `build/bin` structures to target directory
+- **Efficient extraction**: Handles tar.gz extraction for Linux releases (and zip for macOS) and intelligently moves binaries from nested `llama-*` or `build/bin` structures to the target directory
 - **Clean installation**: Automatically removes temporary files, empty directories, and build artifacts after installation
 - **Comprehensive error handling**: Detailed error messages and recovery suggestions for common issues
 
@@ -21,7 +21,8 @@ A powerful shell script that automatically downloads and updates llama.cpp binar
 
 ### For binary downloads (recommended for quick setup):
 - `curl` or `wget` (for downloading files from GitHub releases)
-- `unzip` (for extracting compressed archives)
+ - `tar` (for extracting `.tar.gz` archives on Linux)
+ - `unzip` (for extracting `.zip` archives on macOS)
 - Internet connection to access GitHub API and download assets
 - ~80MB free disk space for downloaded binaries
 
@@ -76,7 +77,7 @@ A powerful shell script that automatically downloads and updates llama.cpp binar
 
 | OS | Architecture | Binary Packages | Build from Source |
 |---|---|---|---|
-| Linux (Ubuntu) | x64 | `llama-*-bin-ubuntu-x64.zip`<br>`llama-*-bin-ubuntu-vulkan-x64.zip` | ✅ Auto GPU detection |
+| Linux (Ubuntu) | x64 | `llama-*-bin-ubuntu-x64.tar.gz`<br>`llama-*-bin-ubuntu-vulkan-x64.tar.gz` | ✅ Auto GPU detection |
 | Linux (Ubuntu) | ARM64 | ❌ Not available | ✅ Full support |
 | macOS | x64 | `llama-*-bin-macos-x64.zip` | ✅ Metal acceleration |
 | macOS | ARM64 | `llama-*-bin-macos-arm64.zip` | ✅ Metal acceleration |
@@ -104,7 +105,7 @@ A powerful shell script that automatically downloads and updates llama.cpp binar
 | **Performance** | ✅ Good (pre-optimized) | 🚀 Excellent (hardware-specific) |
 | **GPU Support** | ✅ Pre-selected variants | 🎯 Auto-detected optimal |
 | **Disk Space** | 📦 ~80MB download | 💾 ~2GB (full build) |
-| **Dependencies** | Minimal (curl, unzip) | Full (git, cmake, compiler) |
+| **Dependencies** | Minimal (curl, tar (Linux), unzip (macOS)) | Full (git, cmake, compiler) |
 | **CURL Support** | ✅ Always included | ✅ If dev libraries available |
 | **Server Features** | ✅ Full server functionality | ✅ If dependencies met |
 | **Customization** | ❌ Fixed build configuration | ✅ Tailored to your hardware |
@@ -122,7 +123,7 @@ A powerful shell script that automatically downloads and updates llama.cpp binar
 1. **Missing dependencies for binary downloads**:
    ```bash
    # On Ubuntu/Debian
-   sudo apt-get install curl unzip
+   sudo apt-get install curl tar unzip
    
    # On macOS with Homebrew
    brew install curl unzip
@@ -150,6 +151,13 @@ A powerful shell script that automatically downloads and updates llama.cpp binar
    - Try building from source: `./update-llama.sh --build-from-source`
    - Verify internet connection
    - Check GitHub releases page manually
+   - For Ubuntu/Linux: ensure the release asset includes a `llama-*-bin-ubuntu-*.tar.gz` archive (the script expects `.tar.gz` files)
+
+## Note: Linux (.tar.gz) release format and extraction behavior
+
+- Linux releases now use `.tar.gz` archives. The updater script expects these archives for Ubuntu builds.
+- The `.tar.gz` archive contains a versioned folder, for example `llama-b7330`, which includes a `bin/` directory with binaries. The updater will extract the archive and look for a `llama-*` directory; if present, it will move binaries from `llama-*/bin/*` into the target directory.
+- If the `bin/` directory is not found in the versioned folder, the script will try to move executable files from the root of that folder. The script also gracefully handles legacy `build/bin` layouts used by earlier ZIP releases if present.
 
 5. **Vulkan detection issues**:
    ```bash

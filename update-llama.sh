@@ -114,29 +114,45 @@ get_download_url() {
     local system_arch="$2"
 
     # Pattern to match the appropriate binary for the system
-    local pattern=""
+    local patterns=()
     case "$system_arch" in
-    "ubuntu-x64") pattern="llama-.*-bin-ubuntu-x64\.zip" ;;
-    "ubuntu-vulkan-x64") pattern="llama-.*-bin-ubuntu-vulkan-x64\.zip" ;;
+    "ubuntu-x64")
+        # Use tar.gz format for Linux releases
+        patterns=("llama-.*-bin-ubuntu-x64\.tar\.gz")
+        ;;
+    "ubuntu-vulkan-x64")
+        # Use tar.gz format for Linux releases
+        patterns=("llama-.*-bin-ubuntu-vulkan-x64\.tar\.gz")
+        ;;
     "ubuntu-arm64")
         print_error "Ubuntu ARM64 binaries are not available in llama.cpp releases"
         print_error "Only Ubuntu x64 is supported. Available Ubuntu packages:"
         echo "$release_data" | grep '"name"' | sed 's/.*"name": *"\([^"]*\)".*/\1/' | grep -i ubuntu
         exit 1
         ;;
-    "macos-x64") pattern="llama-.*-bin-macos-x64\.zip" ;;
-    "macos-arm64") pattern="llama-.*-bin-macos-arm64\.zip" ;;
+    "macos-x64") patterns=("llama-.*-bin-macos-x64\.zip") ;;
+    "macos-arm64") patterns=("llama-.*-bin-macos-arm64\.zip") ;;
     *)
         print_error "No pattern defined for system: $system_arch"
         exit 1
         ;;
     esac
 
-    # Extract download URL using the pattern
-    echo "$release_data" | grep -o '"browser_download_url": *"[^"]*"' |
-        grep -E "$pattern" |
-        sed 's/.*"browser_download_url": *"\([^"]*\)".*/\1/' |
-        head -n1
+    # Try each pattern in order and return the first match
+    for pattern in "${patterns[@]}"; do
+        local url
+        url=$(echo "$release_data" | grep -o '"browser_download_url": *"[^"]*"' |
+            grep -E "$pattern" |
+            sed 's/.*"browser_download_url": *"\([^"]*\)".*/\1/' |
+            head -n1)
+        if [ -n "$url" ]; then
+            echo "$url"
+            return 0
+        fi
+    done
+
+    # No URL found for any pattern
+    return 1
 }
 
 # Function to download file
@@ -169,49 +185,95 @@ extract_zip() {
     fi
 }
 
-# Function to move files from build/bin to target directory
+# Function to extract tar.gz file
+extract_targz() {
+    local targz_file="$1"
+    local extract_dir="$2"
+
+    if command -v tar >/dev/null 2>&1; then
+        tar -xzf "$targz_file" -C "$extract_dir"
+    else
+        print_error "tar is not available. Please install it."
+        exit 1
+    fi
+}
+
+# Function to move files from tar.gz extracted folder structure or build/bin to target directory
 move_binaries() {
     local extract_dir="$1"
     local target_dir="$2"
 
-    local build_bin_dir="$extract_dir/build/bin"
+    # Create target directory if it doesn't exist
+    mkdir -p "$target_dir"
 
-    if [ -d "$build_bin_dir" ]; then
-        print_info "Moving binaries from build/bin to $target_dir"
+    # Check for version-specific folder (e.g., llama-b7330) from tar.gz archives
+    local version_folder
+    version_folder=$(find "$extract_dir" -maxdepth 1 -type d -name "llama-*" | head -n1)
 
-        # Create target directory if it doesn't exist
-        mkdir -p "$target_dir"
-
-        # Move all files from build/bin to target directory
-        for file in "$build_bin_dir"/*; do
-            if [ -f "$file" ]; then
-                local filename
-                filename=$(basename "$file")
-                if [ -f "$target_dir/$filename" ]; then
-                    print_warning "Overwriting existing file: $filename"
+    if [ -n "$version_folder" ] && [ -d "$version_folder" ]; then
+        # tar.gz structure: extract_dir/llama-b7330/bin/*
+        local bin_dir="$version_folder/bin"
+        if [ -d "$bin_dir" ]; then
+            print_info "Moving binaries from $version_folder/bin to $target_dir"
+            for file in "$bin_dir"/*; do
+                if [ -f "$file" ]; then
+                    local filename
+                    filename=$(basename "$file")
+                    if [ -f "$target_dir/$filename" ]; then
+                        print_warning "Overwriting existing file: $filename"
+                    fi
+                    mv "$file" "$target_dir/"
+                    print_info "Moved: $filename"
                 fi
-                mv "$file" "$target_dir/"
-                print_info "Moved: $filename"
-            fi
-        done
-
-        # Remove the empty build directory structure
-        rm -rf "$extract_dir/build"
-        print_info "Removed empty build directory"
+            done
+        else
+            print_warning "bin directory not found in $version_folder"
+            # Fallback: move all executable files from version folder
+            for file in "$version_folder"/*; do
+                if [ -f "$file" ] && [ -x "$file" ]; then
+                    local filename
+                    filename=$(basename "$file")
+                    mv "$file" "$target_dir/"
+                    print_info "Moved: $filename"
+                fi
+            done
+        fi
+        # Clean up version folder
+        rm -rf "$version_folder"
     else
-        print_warning "build/bin directory not found in extracted files"
-        # If build/bin doesn't exist, move all files from extract_dir
-        for file in "$extract_dir"/*; do
-            if [ -f "$file" ]; then
-                local filename
-                filename=$(basename "$file")
-                if [ -f "$target_dir/$filename" ]; then
-                    print_warning "Overwriting existing file: $filename"
+        # Fallback to zip structure: extract_dir/build/bin/*
+        local build_bin_dir="$extract_dir/build/bin"
+        if [ -d "$build_bin_dir" ]; then
+            print_info "Moving binaries from build/bin to $target_dir"
+            for file in "$build_bin_dir"/*; do
+                if [ -f "$file" ]; then
+                    local filename
+                    filename=$(basename "$file")
+                    if [ -f "$target_dir/$filename" ]; then
+                        print_warning "Overwriting existing file: $filename"
+                    fi
+                    mv "$file" "$target_dir/"
+                    print_info "Moved: $filename"
                 fi
-                mv "$file" "$target_dir/"
-                print_info "Moved: $filename"
-            fi
-        done
+            done
+            # Remove the empty build directory structure
+            rm -rf "$extract_dir/build"
+            print_info "Removed empty build directory"
+        else
+            print_warning "No bin directory found in extracted files"
+            # Fallback: move all files from extract_dir
+            for file in "$extract_dir"/*; do
+                if [ -f "$file" ]; then
+                    local filename
+                    filename=$(basename "$file")
+                    if [ -f "$target_dir/$filename" ]; then
+                        print_warning "Overwriting existing file: $filename"
+                    fi
+                    mv "$file" "$target_dir/"
+                    print_info "Moved: $filename"
+                fi
+            done
+        fi
     fi
 }
 
@@ -454,21 +516,21 @@ main() {
     # Create temporary directory
     local temp_dir
     temp_dir=$(mktemp -d)
-    local zip_file="$temp_dir/llama-cpp.zip"
+    local archive_file="$temp_dir/llama-cpp.tar.gz"
     local extract_dir="$temp_dir/extract"
 
     # Set up cleanup trap
     trap 'cleanup "$temp_dir"' EXIT
 
     # Download the file
-    download_file "$download_url" "$zip_file"
+    download_file "$download_url" "$archive_file"
 
     # Create extraction directory
     mkdir -p "$extract_dir"
 
-    # Extract the zip file
+    # Extract the tar.gz archive
     print_info "Extracting files..."
-    extract_zip "$zip_file" "$extract_dir"
+    extract_targz "$archive_file" "$extract_dir"
 
     # Move binaries to target directory
     move_binaries "$extract_dir" "$target_dir"
