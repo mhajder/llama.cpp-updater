@@ -278,7 +278,7 @@ move_binaries() {
             filename=$(basename "$file")
             if [ -e "$target_dir/$filename" ] || [ -L "$target_dir/$filename" ]; then
                 print_warning "Overwriting existing file: $filename"
-                rm -rf "$target_dir/$filename"
+                rm -rf "${target_dir:?}/${filename:?}"
             fi
             mv "$file" "$target_dir/"
             INSTALLED_FILES+=("$filename")
