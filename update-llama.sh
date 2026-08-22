@@ -206,10 +206,18 @@ download_file() {
 
     print_info "Downloading from: $url"
 
+    # Without --fail an HTTP error page is written out as if it were the
+    # archive, which only surfaces later as an unreadable archive
     if command -v curl >/dev/null 2>&1; then
-        curl -L -o "$output" "$url"
+        if ! curl -fL -o "$output" "$url"; then
+            print_error "Download failed: $url"
+            exit 1
+        fi
     elif command -v wget >/dev/null 2>&1; then
-        wget -O "$output" "$url"
+        if ! wget -O "$output" "$url"; then
+            print_error "Download failed: $url"
+            exit 1
+        fi
     else
         print_error "Neither curl nor wget is available."
         exit 1
