@@ -298,13 +298,18 @@ move_binaries() {
     rm -rf "$extract_dir/build"
 }
 
-# Function to make binaries executable
+# Function to make the installed binaries executable
+#
+# Only files this run installed are touched, so unrelated files that happen to
+# share the target directory keep their permissions.
 make_executable() {
     local target_dir="$1"
 
     print_info "Making binaries executable"
-    for file in "$target_dir"/*; do
-        if [ -f "$file" ] && [[ ! $file =~ \.(txt|md|json)$ ]]; then
+    local filename file
+    for filename in "${INSTALLED_FILES[@]}"; do
+        file="$target_dir/$filename"
+        if [ -f "$file" ] && [ ! -L "$file" ] && [[ ! $filename =~ \.(txt|md|json)$ ]]; then
             chmod +x "$file"
         fi
     done
