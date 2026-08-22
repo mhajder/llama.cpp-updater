@@ -342,7 +342,7 @@ build_from_source() {
     fi
 
     # Check for optional dependencies and warn if missing
-    local cmake_disable_flags=""
+    local cmake_args=()
 
     # Check for CURL development libraries
     if ! pkg-config --exists libcurl 2>/dev/null &&
@@ -350,7 +350,7 @@ build_from_source() {
         ! [ -f "/usr/local/include/curl/curl.h" ]; then
         print_warning "CURL development libraries not found, disabling CURL support"
         print_info "Install with: sudo apt-get install libcurl4-openssl-dev (Ubuntu) or brew install curl (macOS)"
-        cmake_disable_flags="$cmake_disable_flags -DLLAMA_CURL=OFF"
+        cmake_args+=("-DLLAMA_CURL=OFF")
     fi
 
     # Check for other optional dependencies
@@ -382,33 +382,30 @@ build_from_source() {
     mkdir -p build
     cd build
 
-    # Configure build with appropriate options
-    local cmake_args=""
-
     # Detect and configure GPU support
     if [ "$(uname -s)" = "Linux" ]; then
         # Check for CUDA
         if command -v nvcc >/dev/null 2>&1; then
             print_info "CUDA detected, enabling CUDA support"
-            cmake_args="$cmake_args -DGGML_CUDA=ON"
+            cmake_args+=("-DGGML_CUDA=ON")
         # Check for Vulkan
         elif check_vulkan_support; then
             print_info "Vulkan detected, enabling Vulkan support"
-            cmake_args="$cmake_args -DGGML_VULKAN=ON"
+            cmake_args+=("-DGGML_VULKAN=ON")
         # Check for OpenCL
         elif [ -f "/usr/lib/x86_64-linux-gnu/libOpenCL.so.1" ] || ldconfig -p 2>/dev/null | grep -q "libOpenCL.so"; then
             print_info "OpenCL detected, enabling OpenCL support"
-            cmake_args="$cmake_args -DGGML_OPENCL=ON"
+            cmake_args+=("-DGGML_OPENCL=ON")
         fi
     elif [ "$(uname -s)" = "Darwin" ]; then
         # On macOS, enable Metal support
         print_info "macOS detected, enabling Metal support"
-        cmake_args="$cmake_args -DGGML_METAL=ON"
+        cmake_args+=("-DGGML_METAL=ON")
     fi
 
     # Configure with CMake
     print_info "Configuring build with CMake..."
-    if ! cmake .. "$cmake_args" "$cmake_disable_flags"; then
+    if ! cmake .. "${cmake_args[@]}"; then
         print_error "CMake configuration failed"
         print_error "Common solutions:"
         print_error "  1. Install missing development libraries:"
