@@ -52,8 +52,8 @@ detect_system() {
         ;;
     esac
 
-    # For Ubuntu x64, check for Vulkan support if not explicitly disabled
-    if [ "$os" = "ubuntu" ] && [ "$arch" = "x64" ] && [ "$FORCE_REGULAR" != "1" ]; then
+    # For Ubuntu, check for Vulkan support if not explicitly disabled
+    if [ "$os" = "ubuntu" ] && [ "$FORCE_REGULAR" != "1" ]; then
         if [ "$FORCE_VULKAN" = "1" ]; then
             variant="vulkan"
         elif check_vulkan_support; then
@@ -131,6 +131,18 @@ get_latest_bleeding_release() {
         done
 }
 
+# Function to list asset names from release data
+#
+# The GitHub API returns the whole release as a single line, so each name has
+# to be matched individually rather than by filtering lines.
+list_asset_names() {
+    local release_data="$1"
+
+    echo "$release_data" |
+        grep -o '"name": *"[^"]*"' |
+        sed 's/.*"name": *"\([^"]*\)".*/\1/'
+}
+
 # Function to extract version from release data
 get_version() {
     local release_data="$1"
@@ -150,14 +162,15 @@ get_download_url() {
         patterns=("llama-.*-bin-ubuntu-x64\.tar\.gz")
         ;;
     "ubuntu-vulkan-x64")
-        # Use tar.gz format for Linux releases
-        patterns=("llama-.*-bin-ubuntu-vulkan-x64\.tar\.gz")
+        # Fall back to the regular build if no Vulkan asset was published
+        patterns=("llama-.*-bin-ubuntu-vulkan-x64\.tar\.gz" "llama-.*-bin-ubuntu-x64\.tar\.gz")
         ;;
     "ubuntu-arm64")
-        print_error "Ubuntu ARM64 binaries are not available in llama.cpp releases"
-        print_error "Only Ubuntu x64 is supported. Available Ubuntu packages:"
-        echo "$release_data" | grep '"name"' | sed 's/.*"name": *"\([^"]*\)".*/\1/' | grep -i ubuntu
-        exit 1
+        patterns=("llama-.*-bin-ubuntu-arm64\.tar\.gz")
+        ;;
+    "ubuntu-vulkan-arm64")
+        # Fall back to the regular build if no Vulkan asset was published
+        patterns=("llama-.*-bin-ubuntu-vulkan-arm64\.tar\.gz" "llama-.*-bin-ubuntu-arm64\.tar\.gz")
         ;;
     "macos-x64") patterns=("llama-.*-bin-macos-x64\.(tar\.gz|zip)") ;;
     "macos-arm64") patterns=("llama-.*-bin-macos-arm64\.(tar\.gz|zip)") ;;
@@ -537,7 +550,7 @@ main() {
     if [ -z "$download_url" ]; then
         print_error "No suitable binary found for $system_arch"
         print_error "Available assets:"
-        echo "$release_data" | grep '"name"' | sed 's/.*"name": *"\([^"]*\)".*/\1/' | grep -E '\.(zip|tar\.gz)$'
+        list_asset_names "$release_data" | grep -E '\.(zip|tar\.gz)$'
         exit 1
     fi
 
