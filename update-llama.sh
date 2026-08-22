@@ -240,7 +240,14 @@ extract_targz() {
     fi
 }
 
-# Function to move files from tar.gz extracted folder structure or build/bin to target directory
+# Names of the files move_binaries placed in the target directory
+INSTALLED_FILES=()
+
+# Function to move the extracted release payload to the target directory
+#
+# Current archives hold a single llama-b[NUM] directory with the binaries and
+# their shared libraries side by side. Older archives nested the payload under
+# bin/ or build/bin, so those layouts are still recognised.
 move_binaries() {
     local extract_dir="$1"
     local target_dir="$2"
@@ -248,75 +255,47 @@ move_binaries() {
     # Create target directory if it doesn't exist
     mkdir -p "$target_dir"
 
-    # Check for version-specific folder (e.g., llama-b7330) from tar.gz archives
-    local version_folder
+    # Locate the directory holding the payload
+    local version_folder source_dir
     version_folder=$(find "$extract_dir" -maxdepth 1 -type d -name "llama-*" | head -n1)
 
-    if [ -n "$version_folder" ] && [ -d "$version_folder" ]; then
-        # tar.gz structure: extract_dir/llama-b7330/bin/*
-        local bin_dir="$version_folder/bin"
-        if [ -d "$bin_dir" ]; then
-            print_info "Moving binaries from $version_folder/bin to $target_dir"
-            for file in "$bin_dir"/*; do
-                if [ -f "$file" ]; then
-                    local filename
-                    filename=$(basename "$file")
-                    if [ -f "$target_dir/$filename" ]; then
-                        print_warning "Overwriting existing file: $filename"
-                    fi
-                    mv "$file" "$target_dir/"
-                    print_info "Moved: $filename"
-                fi
-            done
-        else
-            print_warning "bin directory not found in $version_folder"
-            # Fallback: move all executable files from version folder
-            for file in "$version_folder"/*; do
-                if [ -f "$file" ] && [ -x "$file" ]; then
-                    local filename
-                    filename=$(basename "$file")
-                    mv "$file" "$target_dir/"
-                    print_info "Moved: $filename"
-                fi
-            done
-        fi
-        # Clean up version folder
-        rm -rf "$version_folder"
+    if [ -n "$version_folder" ] && [ -d "$version_folder/bin" ]; then
+        source_dir="$version_folder/bin"
+    elif [ -n "$version_folder" ]; then
+        source_dir="$version_folder"
+    elif [ -d "$extract_dir/build/bin" ]; then
+        source_dir="$extract_dir/build/bin"
     else
-        # Fallback to zip structure: extract_dir/build/bin/*
-        local build_bin_dir="$extract_dir/build/bin"
-        if [ -d "$build_bin_dir" ]; then
-            print_info "Moving binaries from build/bin to $target_dir"
-            for file in "$build_bin_dir"/*; do
-                if [ -f "$file" ]; then
-                    local filename
-                    filename=$(basename "$file")
-                    if [ -f "$target_dir/$filename" ]; then
-                        print_warning "Overwriting existing file: $filename"
-                    fi
-                    mv "$file" "$target_dir/"
-                    print_info "Moved: $filename"
-                fi
-            done
-            # Remove the empty build directory structure
-            rm -rf "$extract_dir/build"
-            print_info "Removed empty build directory"
-        else
-            print_warning "No bin directory found in extracted files"
-            # Fallback: move all files from extract_dir
-            for file in "$extract_dir"/*; do
-                if [ -f "$file" ]; then
-                    local filename
-                    filename=$(basename "$file")
-                    if [ -f "$target_dir/$filename" ]; then
-                        print_warning "Overwriting existing file: $filename"
-                    fi
-                    mv "$file" "$target_dir/"
-                    print_info "Moved: $filename"
-                fi
-            done
-        fi
+        source_dir="$extract_dir"
     fi
+
+    print_info "Moving files from $source_dir to $target_dir"
+
+    local file filename
+    for file in "$source_dir"/*; do
+        # -L keeps symlinks whose target this loop already moved
+        if [ -e "$file" ] || [ -L "$file" ]; then
+            filename=$(basename "$file")
+            if [ -e "$target_dir/$filename" ] || [ -L "$target_dir/$filename" ]; then
+                print_warning "Overwriting existing file: $filename"
+                rm -rf "$target_dir/$filename"
+            fi
+            mv "$file" "$target_dir/"
+            INSTALLED_FILES+=("$filename")
+            print_info "Moved: $filename"
+        fi
+    done
+
+    if [ ${#INSTALLED_FILES[@]} -eq 0 ]; then
+        print_error "The archive contained no files to install"
+        exit 1
+    fi
+
+    # Discard the wrapper directories the archive came with
+    if [ -n "$version_folder" ]; then
+        rm -rf "$version_folder"
+    fi
+    rm -rf "$extract_dir/build"
 }
 
 # Function to make binaries executable
