@@ -517,7 +517,7 @@ main() {
     # Get latest bleeding-edge release
     print_info "Fetching latest bleeding-edge release information..."
     local release_data
-    release_data=$(get_latest_bleeding_release)
+    release_data=$(get_latest_bleeding_release) || true
 
     if [ -z "$release_data" ]; then
         print_error "Failed to fetch release information"
@@ -535,7 +535,7 @@ main() {
 
     # Get download URL
     local download_url
-    download_url=$(get_download_url "$release_data" "$system_arch")
+    download_url=$(get_download_url "$release_data" "$system_arch") || true
 
     if [ -z "$download_url" ]; then
         print_error "No suitable binary found for $system_arch"
