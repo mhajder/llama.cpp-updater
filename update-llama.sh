@@ -581,10 +581,10 @@ main() {
 
     # List the installed files
     print_info "Installed files:"
-    for file in "$target_dir"/*; do
+    local filename file size
+    for filename in "${INSTALLED_FILES[@]}"; do
+        file="$target_dir/$filename"
         if [ -f "$file" ]; then
-            local filename size
-            filename=$(basename "$file")
             size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null || echo "unknown")
             echo "  $filename ($size bytes)"
         fi
