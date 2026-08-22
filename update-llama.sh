@@ -88,18 +88,47 @@ check_vulkan_support() {
     return 1
 }
 
-# Function to get latest release info from GitHub API
-get_latest_release() {
-    local api_url="https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
+# Function to fetch data from GitHub API
+github_get() {
+    local api_url="$1"
 
     if command -v curl >/dev/null 2>&1; then
-        curl -s "$api_url"
+        curl -fsSL "$api_url"
     elif command -v wget >/dev/null 2>&1; then
         wget -qO- "$api_url"
     else
         print_error "Neither curl nor wget is available. Please install one of them."
         exit 1
     fi
+}
+
+# Function to get the latest bleeding-edge release
+#
+# llama.cpp bleeding-edge releases use the b[NUM] tag format.
+# The GitHub releases API is queried for all releases and the first
+# non-draft, non-prerelease b[NUM] release is selected.
+get_latest_bleeding_release() {
+    local releases_data
+
+    releases_data=$(github_get "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=10")
+
+    if [ -z "$releases_data" ]; then
+        print_error "Failed to fetch llama.cpp releases"
+        return 1
+    fi
+
+    echo "$releases_data" |
+        awk '
+        /"tag_name":/ {
+            if (match($0, /"b[0-9]+"/)) {
+                tag = substr($0, RSTART + 1, RLENGTH - 2)
+                print tag
+                exit
+            }
+        }' |
+        while read -r tag; do
+            [ -n "$tag" ] && github_get "https://api.github.com/repos/ggml-org/llama.cpp/releases/tags/$tag"
+        done
 }
 
 # Function to extract version from release data
@@ -130,8 +159,8 @@ get_download_url() {
         echo "$release_data" | grep '"name"' | sed 's/.*"name": *"\([^"]*\)".*/\1/' | grep -i ubuntu
         exit 1
         ;;
-    "macos-x64") patterns=("llama-.*-bin-macos-x64\.zip") ;;
-    "macos-arm64") patterns=("llama-.*-bin-macos-arm64\.zip") ;;
+    "macos-x64") patterns=("llama-.*-bin-macos-x64\.(tar\.gz|zip)") ;;
+    "macos-arm64") patterns=("llama-.*-bin-macos-arm64\.(tar\.gz|zip)") ;;
     *)
         print_error "No pattern defined for system: $system_arch"
         exit 1
@@ -485,10 +514,10 @@ main() {
     fi
     print_info "Detected system: $system_arch"
 
-    # Get latest release information
-    print_info "Fetching latest release information..."
+    # Get latest bleeding-edge release
+    print_info "Fetching latest bleeding-edge release information..."
     local release_data
-    release_data=$(get_latest_release)
+    release_data=$(get_latest_bleeding_release)
 
     if [ -z "$release_data" ]; then
         print_error "Failed to fetch release information"
@@ -498,7 +527,11 @@ main() {
     # Extract version
     local version
     version=$(get_version "$release_data")
-    print_info "Latest version: $version"
+    if [ -z "$version" ]; then
+        print_error "Failed to determine release version"
+        exit 1
+    fi
+    print_info "Selected version: $version"
 
     # Get download URL
     local download_url
@@ -516,7 +549,7 @@ main() {
     # Create temporary directory
     local temp_dir
     temp_dir=$(mktemp -d)
-    local archive_file="$temp_dir/llama-cpp.tar.gz"
+    local archive_file="$temp_dir/llama-cpp.archive"
     local extract_dir="$temp_dir/extract"
 
     # Set up cleanup trap
@@ -528,9 +561,20 @@ main() {
     # Create extraction directory
     mkdir -p "$extract_dir"
 
-    # Extract the tar.gz archive
+    # Extract the downloaded archive
     print_info "Extracting files..."
-    extract_targz "$archive_file" "$extract_dir"
+    case "$download_url" in
+    *.tar.gz)
+        extract_targz "$archive_file" "$extract_dir"
+        ;;
+    *.zip)
+        extract_zip "$archive_file" "$extract_dir"
+        ;;
+    *)
+        print_error "Unsupported archive format: $download_url"
+        exit 1
+        ;;
+    esac
 
     # Move binaries to target directory
     move_binaries "$extract_dir" "$target_dir"
@@ -571,8 +615,8 @@ if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     echo "  target_directory  Directory to install binaries (default: current directory)"
     echo ""
     echo "Examples:"
-    echo "  $0                              # Download and install in current directory"
-    echo "  $0 ./llama-bin                  # Download and install in ./llama-bin directory"
+    echo "  $0                              # Download latest bleeding-edge release in current directory"
+    echo "  $0 ./llama-bin                  # Download latest bleeding-edge release in ./llama-bin"
     echo "  $0 --build-from-source          # Build from source in current directory"
     echo "  $0 --build-from-source ./bin    # Build from source and install in ./bin"
     echo "  $0 --vulkan ./bin               # Force Vulkan build for Ubuntu"
