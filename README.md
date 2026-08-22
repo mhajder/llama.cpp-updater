@@ -3,17 +3,19 @@
 [![Shell Script Quality Check](https://github.com/mhajder/llama.cpp-updater/workflows/Shell%20Script%20Quality%20Check/badge.svg)](https://github.com/mhajder/llama.cpp-updater/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A powerful shell script that automatically downloads and updates llama.cpp binaries from the latest GitHub release, or builds from source with optimal GPU acceleration. This tool simplifies the process of keeping your llama.cpp installation up-to-date across different platforms and architectures.
+A powerful shell script that automatically downloads and updates llama.cpp binaries from the latest nightly GitHub release, or builds from source with optimal GPU acceleration. This tool simplifies the process of keeping your llama.cpp installation up-to-date across different platforms and architectures.
+
+Since v0.2.0 llama.cpp publishes both stable `vX.Y.Z` tags and per-commit `b[NUM]` nightly tags. Only the nightlies carry prebuilt binaries, so the script always selects the most recent `b[NUM]` release.
 
 ## Features
 
 - **Cross-platform support**: Works seamlessly on Linux and macOS with full architecture detection
 - **Intelligent architecture detection**: Automatically detects x64 and ARM64 architectures for optimal binary selection
-- **Advanced Vulkan support**: Automatically detects Vulkan capabilities and selects appropriate builds on Ubuntu when available
+- **Advanced Vulkan support**: Automatically detects Vulkan capabilities on Ubuntu and falls back to the regular build when no Vulkan asset was published
 - **Flexible build options**: Choose between fast binary downloads or optimized source builds with automatic GPU acceleration detection
 - **Smart installation management**: Install to current directory or specify custom paths with automatic directory creation
-- **Safe update process**: Overwrites existing binaries with newer versions while preserving file permissions
-- **Efficient extraction**: Handles tar.gz extraction for Linux releases (and zip for macOS) and intelligently moves binaries from nested `llama-*` or `build/bin` structures to the target directory
+- **Safe update process**: Overwrites its own previously installed files and leaves everything else in the target directory untouched
+- **Efficient extraction**: Handles both `.tar.gz` and `.zip` assets, and moves the payload out of the archive's `llama-*` wrapper directory (older `llama-*/bin` and `build/bin` layouts are still recognised)
 - **Clean installation**: Automatically removes temporary files, empty directories, and build artifacts after installation
 - **Comprehensive error handling**: Detailed error messages and recovery suggestions for common issues
 
@@ -21,10 +23,10 @@ A powerful shell script that automatically downloads and updates llama.cpp binar
 
 ### For binary downloads (recommended for quick setup):
 - `curl` or `wget` (for downloading files from GitHub releases)
- - `tar` (for extracting `.tar.gz` archives on Linux)
- - `unzip` (for extracting `.zip` archives on macOS)
+- `tar` (for extracting `.tar.gz` archives, the format used by all current Linux and macOS assets)
+- `unzip` (only needed for older `.zip` assets)
 - Internet connection to access GitHub API and download assets
-- ~80MB free disk space for downloaded binaries
+- ~60MB free disk space (~16MB download, ~40MB extracted)
 
 ### For building from source (recommended for maximum performance):
 - `git` (for cloning the llama.cpp repository)
@@ -61,7 +63,7 @@ A powerful shell script that automatically downloads and updates llama.cpp binar
 
 ### Force specific Ubuntu variant:
 ```bash
-# Force Vulkan build (Ubuntu x64)
+# Force Vulkan build (Ubuntu x64 and ARM64)
 ./update-llama.sh --vulkan ./bin
 
 # Force regular build (disable Vulkan auto-detection)
@@ -78,9 +80,9 @@ A powerful shell script that automatically downloads and updates llama.cpp binar
 | OS | Architecture | Binary Packages | Build from Source |
 |---|---|---|---|
 | Linux (Ubuntu) | x64 | `llama-*-bin-ubuntu-x64.tar.gz`<br>`llama-*-bin-ubuntu-vulkan-x64.tar.gz` | ✅ Auto GPU detection |
-| Linux (Ubuntu) | ARM64 | ❌ Not available | ✅ Full support |
-| macOS | x64 | `llama-*-bin-macos-x64.zip` | ✅ Metal acceleration |
-| macOS | ARM64 | `llama-*-bin-macos-arm64.zip` | ✅ Metal acceleration |
+| Linux (Ubuntu) | ARM64 | `llama-*-bin-ubuntu-arm64.tar.gz`<br>`llama-*-bin-ubuntu-vulkan-arm64.tar.gz` | ✅ Full support |
+| macOS | x64 | `llama-*-bin-macos-x64.tar.gz` | ✅ Metal acceleration |
+| macOS | ARM64 | `llama-*-bin-macos-arm64.tar.gz` | ✅ Metal acceleration |
 
 ### GPU Acceleration (Build from Source - Optimal Performance)
 | Platform | GPU Support | Auto-detected | Performance Notes |
@@ -95,7 +97,7 @@ A powerful shell script that automatically downloads and updates llama.cpp binar
 - **OpenCL Detection**: Searches for OpenCL runtime libraries and compatible devices
 - **Metal Detection**: Automatically enabled on macOS for optimal Apple GPU utilization
 
-**Note**: Binary packages for Ubuntu ARM64 are not provided in official releases, but you can build from source for full ARM64 support.
+**Note**: Vulkan variants are not published for every nightly. When the Vulkan asset is missing the script falls back to the regular Ubuntu build for the same architecture.
 
 ## Binary Download vs Build from Source
 
@@ -104,17 +106,34 @@ A powerful shell script that automatically downloads and updates llama.cpp binar
 | **Setup Speed** | ⚡ Very Fast (2-5 minutes) | 🐌 Slow (15-45 minutes) |
 | **Performance** | ✅ Good (pre-optimized) | 🚀 Excellent (hardware-specific) |
 | **GPU Support** | ✅ Pre-selected variants | 🎯 Auto-detected optimal |
-| **Disk Space** | 📦 ~80MB download | 💾 ~2GB (full build) |
-| **Dependencies** | Minimal (curl, tar (Linux), unzip (macOS)) | Full (git, cmake, compiler) |
+| **Disk Space** | 📦 ~60MB installed | 💾 ~2GB (full build) |
+| **Dependencies** | Minimal (curl, tar) | Full (git, cmake, compiler) |
 | **CURL Support** | ✅ Always included | ✅ If dev libraries available |
 | **Server Features** | ✅ Full server functionality | ✅ If dependencies met |
 | **Customization** | ❌ Fixed build configuration | ✅ Tailored to your hardware |
-| **Ubuntu ARM64** | ❌ Not officially available | ✅ Full support with optimizations |
-| **Latest Features** | 📅 Release schedule dependent | 🔄 Always bleeding edge |
+| **Ubuntu ARM64** | ✅ Official nightly assets | ✅ Full support with optimizations |
+| **Latest Features** | 🔄 Latest nightly (`b[NUM]`) | 🔄 Always bleeding edge |
 
 ### Recommendations:
-- **Choose Binary Download** if you want quick setup, good performance, and stable releases
-- **Choose Build from Source** if you want maximum performance, have Ubuntu ARM64, need latest features, or have specific GPU requirements
+- **Choose Binary Download** if you want quick setup and good performance
+- **Choose Build from Source** if you want maximum performance or have specific GPU requirements
+
+## Release archive layout
+
+Current llama.cpp assets are `.tar.gz` archives containing a single versioned
+directory, for example `llama-b10582/`, with the binaries and their shared
+libraries side by side:
+
+```
+llama-b10582/llama-cli
+llama-b10582/libggml-base.so
+llama-b10582/LICENSE
+```
+
+The script moves everything out of that directory into the target directory,
+preserving the symlinks between versioned library names, then marks the
+installed binaries executable. Older archives that nested the payload under
+`llama-*/bin` or `build/bin` are still recognised.
 
 ## Troubleshooting
 
@@ -123,10 +142,10 @@ A powerful shell script that automatically downloads and updates llama.cpp binar
 1. **Missing dependencies for binary downloads**:
    ```bash
    # On Ubuntu/Debian
-   sudo apt-get install curl tar unzip
+   sudo apt-get install curl tar
    
    # On macOS with Homebrew
-   brew install curl unzip
+   brew install curl
    ```
 
 2. **Missing dependencies for building from source**:
@@ -151,13 +170,7 @@ A powerful shell script that automatically downloads and updates llama.cpp binar
    - Try building from source: `./update-llama.sh --build-from-source`
    - Verify internet connection
    - Check GitHub releases page manually
-   - For Ubuntu/Linux: ensure the release asset includes a `llama-*-bin-ubuntu-*.tar.gz` archive (the script expects `.tar.gz` files)
-
-## Note: Linux (.tar.gz) release format and extraction behavior
-
-- Linux releases now use `.tar.gz` archives. The updater script expects these archives for Ubuntu builds.
-- The `.tar.gz` archive contains a versioned folder, for example `llama-b7330`, which includes a `bin/` directory with binaries. The updater will extract the archive and look for a `llama-*` directory; if present, it will move binaries from `llama-*/bin/*` into the target directory.
-- If the `bin/` directory is not found in the versioned folder, the script will try to move executable files from the root of that folder. The script also gracefully handles legacy `build/bin` layouts used by earlier ZIP releases if present.
+   - The script prints the full asset list of the selected release when nothing matches
 
 5. **Vulkan detection issues**:
    ```bash
