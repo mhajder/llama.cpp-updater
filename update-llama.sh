@@ -591,8 +591,8 @@ main() {
     done
 }
 
-# Check if help is requested
-if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+# Function to print the usage message
+print_usage() {
     echo "llama.cpp Updater & Builder Script"
     echo ""
     echo "Usage: $0 [OPTIONS] [target_directory]"
@@ -615,8 +615,7 @@ if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     echo "  $0 --build-from-source ./bin    # Build from source and install in ./bin"
     echo "  $0 --vulkan ./bin               # Force Vulkan build for Ubuntu"
     echo "  $0 --force-regular ./bin        # Force regular Ubuntu build (no Vulkan)"
-    exit 0
-fi
+}
 
 # Parse command line arguments
 BUILD_FROM_SOURCE=""
@@ -637,6 +636,10 @@ while [ $# -gt 0 ]; do
     --vulkan)
         FORCE_VULKAN="1"
         shift
+        ;;
+    -h | --help)
+        print_usage
+        exit 0
         ;;
     -*)
         echo "Unknown option: $1"
