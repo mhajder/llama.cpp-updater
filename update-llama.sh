@@ -17,12 +17,14 @@ print_info() {
     echo -e "${GREEN}[INFO]${NC} $1"
 }
 
+# Warnings and errors go to stderr so they stay visible when a function is
+# called from a command substitution, and never end up in its captured value.
 print_warning() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
+    echo -e "${YELLOW}[WARN]${NC} $1" >&2
 }
 
 print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}[ERROR]${NC} $1" >&2
 }
 
 # Function to detect system and architecture
