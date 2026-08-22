@@ -1,22 +1,24 @@
 name: Shell Script Quality Check
 
 on:
-  - push
-  - pull_request
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   sh-checker:
     name: Code Analysis
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v7
-      
+
     - name: Run the sh-checker
-      uses: luizm/action-sh-checker@master
+      uses: luizm/action-sh-checker@v0.10.0
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         SHFMT_OPTS: -s -i 4
-      with:
-        sh_checker_comment: true
