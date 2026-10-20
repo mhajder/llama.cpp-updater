@@ -65,7 +65,7 @@ Run the same command again whenever you want to update. To always use the newest
 - C++ compiler with C++17 support (gcc 8+, clang 7+, or equivalent)
 - ~2GB free disk space for source code and build artifacts
 - **Optional dependencies for enhanced features**:
-  - `libcurl4-openssl-dev` - enables HTTP/HTTPS model downloading capabilities
+  - `libssl-dev` - enables HTTPS model downloads (llama.cpp uses OpenSSL; curl is no longer used)
   - `zlib1g-dev` - provides compression support for better performance
   - `pkg-config` - assists with automatic dependency detection during build
 - **GPU acceleration libraries (automatically detected)**:
@@ -151,7 +151,7 @@ GITHUB_TOKEN=ghp_yourtoken ./update-llama.sh ./bin
 | **GPU Support** | ✅ Pre-selected variants | 🎯 Auto-detected optimal |
 | **Disk Space** | 📦 ~60MB installed | 💾 ~2GB (full build) |
 | **Dependencies** | Minimal (curl, tar) | Full (git, cmake, compiler) |
-| **CURL Support** | ✅ Always included | ✅ If dev libraries available |
+| **HTTPS Downloads** | ✅ Always included | ✅ If OpenSSL dev libraries available |
 | **Server Features** | ✅ Full server functionality | ✅ If dependencies met |
 | **Customization** | ❌ Fixed build configuration | ✅ Tailored to your hardware |
 | **Ubuntu ARM64** | ✅ Official nightly assets | ✅ Full support with optimizations |
@@ -200,10 +200,10 @@ still recognised.
    sudo apt-get install git cmake build-essential
    
    # Optional but recommended libraries (Ubuntu/Debian)
-   sudo apt-get install libcurl4-openssl-dev zlib1g-dev
+   sudo apt-get install libssl-dev zlib1g-dev
    
    # On macOS with Homebrew
-   brew install git cmake curl
+   brew install git cmake
    ```
 
 3. **Permission denied**:
@@ -232,14 +232,10 @@ still recognised.
    - Check available disk space (build requires ~2GB)
    - Try without GPU acceleration if drivers are problematic
 
-7. **CMake CURL errors** (common on minimal systems):
+7. **"OpenSSL not found, HTTPS support disabled"** (common on minimal systems):
    ```bash
-   # Install CURL development libraries for full functionality
-   sudo apt-get install libcurl4-openssl-dev
-   
-   # For systems with conflicting CURL versions
-   sudo apt-get remove libcurl4-gnutls-dev
-   sudo apt-get install libcurl4-openssl-dev
+   # Install OpenSSL development libraries so llama.cpp can download models over HTTPS
+   sudo apt-get install libssl-dev
    ```
 
 8. **Missing development libraries** (comprehensive setup):
@@ -247,14 +243,14 @@ still recognised.
    # Complete development environment (Ubuntu/Debian)
    sudo apt-get update
    sudo apt-get install build-essential git cmake \
-     libcurl4-openssl-dev zlib1g-dev pkg-config \
+     libssl-dev zlib1g-dev pkg-config \
      vulkan-utils mesa-vulkan-drivers
    
    # Essential build environment (basic requirements)
    sudo apt-get install build-essential git cmake
    
    # macOS complete setup
-   brew install git cmake curl pkg-config
+   brew install git cmake pkg-config
    xcode-select --install  # Install command line tools
    ```
 
