@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/mhajder/llama.cpp-updater/security/advisories/new
+    about: Please report security issues privately, not as a public issue.
+  - name: llama.cpp bugs
+    url: https://github.com/ggml-org/llama.cpp/issues
+    about: Problems with llama.cpp itself, not with installing or updating it.

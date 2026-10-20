@@ -1,0 +1,63 @@
+name: Bug report
+description: update-llama.sh does not work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If llama.cpp itself crashes or misbehaves after a successful install, please report it to [llama.cpp](https://github.com/ggml-org/llama.cpp/issues) instead.
+        For security issues, use [private vulnerability reporting](https://github.com/mhajder/llama.cpp-updater/security/advisories/new).
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: Command you ran
+      placeholder: ./update-llama.sh --vulkan ./bin
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: OS and architecture
+      options:
+        - Ubuntu / Debian x64
+        - Ubuntu / Debian ARM64
+        - Other Linux x64
+        - Other Linux ARM64
+        - macOS Apple Silicon (ARM64)
+        - macOS Intel (x64)
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Install mode
+      options:
+        - Binary download
+        - Build from source
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU and drivers
+      placeholder: e.g. NVIDIA RTX 4090 with CUDA 12.6, AMD with Vulkan, Apple M3 (Metal), none
+  - type: input
+    id: release
+    attributes:
+      label: llama.cpp release
+      description: The b[NUM] release the script picked, if it got that far.
+      placeholder: e.g. b10582
+  - type: textarea
+    id: output
+    attributes:
+      label: Script output
+      description: The full output, including any errors.
+      render: text
+    validations:
+      required: true
