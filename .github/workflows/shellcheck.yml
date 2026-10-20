@@ -16,9 +16,9 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Run the sh-checker
-      uses: luizm/action-sh-checker@v0.10.0
+      uses: luizm/action-sh-checker@883217215b11c1fabbf00eb1a9a041f62d74c744 # v0.10.0
       env:
         SHFMT_OPTS: -s -i 4
