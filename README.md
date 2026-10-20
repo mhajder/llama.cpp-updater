@@ -38,12 +38,15 @@ Run the same command again whenever you want to update. To always use the newest
 
 - **Cross-platform support**: Works seamlessly on Linux and macOS with full architecture detection
 - **Intelligent architecture detection**: Automatically detects x64 and ARM64 architectures for optimal binary selection
-- **Advanced Vulkan support**: Automatically detects Vulkan capabilities on Ubuntu and falls back to the regular build when no Vulkan asset was published
+- **Advanced Vulkan support**: Automatically detects a usable Vulkan GPU on Ubuntu, prefers the newest Vulkan build and falls back to the regular build only when none of the latest releases has one (`--vulkan` refuses to fall back)
 - **Flexible build options**: Choose between fast binary downloads or optimized source builds with automatic GPU acceleration detection
 - **Smart installation management**: Install to current directory or specify custom paths with automatic directory creation
-- **Safe update process**: Overwrites its own previously installed files and leaves everything else in the target directory untouched
+- **Safe update process**: New files are staged first and swapped in together; if anything fails, or the run is interrupted, the previous installation is restored
+- **Stale file cleanup**: Removes files a previous run installed that the new release no longer ships (tracked in `.llama-cpp-updater-manifest`) and leaves everything else in the target directory untouched
 - **Efficient extraction**: Handles both `.tar.gz` and `.zip` assets, and moves the payload out of the archive's `llama-*` wrapper directory (older `llama-*/bin` and `build/bin` layouts are still recognised)
-- **Clean installation**: Automatically removes temporary files, empty directories, and build artifacts after installation
+- **Verified downloads**: Checks each downloaded archive against the sha256 digest GitHub publishes for the asset
+- **Skips unchanged releases**: Does nothing when the latest release is already installed (`--force` reinstalls)
+- **Clean installation**: Removes the download, the extracted archive and the source build tree when done, and clears staging directories left by interrupted runs; a lock stops two runs from updating the same directory at once
 - **Comprehensive error handling**: Detailed error messages and recovery suggestions for common issues
 
 ## 📋 Requirements
@@ -97,6 +100,19 @@ Run the same command again whenever you want to update. To always use the newest
 ./update-llama.sh --force-regular ./bin
 ```
 
+### Reinstall the current release:
+Re-running the script does nothing when the latest release is already installed. Use `--force` to reinstall it anyway (or to rebuild from source, for example after installing GPU libraries):
+```bash
+./update-llama.sh --force ./bin
+```
+
+### Avoid GitHub API rate limits:
+Unauthenticated GitHub API requests are limited to 60 per hour per IP address, which shared CI runners and NAT'd networks can hit. Set a token (no scopes needed) to raise the limit to 5000:
+```bash
+GITHUB_TOKEN=ghp_yourtoken ./update-llama.sh ./bin
+```
+`GH_TOKEN` works too. The token is only sent to `api.github.com`, and never appears on a command line.
+
 ### Help:
 ```bash
 ./update-llama.sh --help
@@ -119,12 +135,12 @@ Run the same command again whenever you want to update. To always use the newest
 | All Platforms | CPU optimizations | ✅ | SIMD instructions, multi-threading, architecture-specific |
 
 **Advanced GPU Detection Logic**:
-- **CUDA Detection**: Checks for `nvcc` compiler and NVIDIA GPU presence
-- **Vulkan Detection**: Verifies Vulkan loader libraries and functional GPU access
-- **OpenCL Detection**: Searches for OpenCL runtime libraries and compatible devices
+- **CUDA Detection**: Looks for the `nvcc` compiler on `PATH`, in `$CUDA_HOME/bin`, `$CUDA_PATH/bin` and `/usr/local/cuda/bin`
+- **Vulkan Detection**: Uses the GPU list from `vulkaninfo` when installed (software renderers such as llvmpipe don't count), otherwise the presence of the Vulkan loader library; building also needs `glslc` and the Vulkan and SPIR-V headers
+- **OpenCL Detection**: Requires the OpenCL headers (`CL/cl.h`), the `libOpenCL.so` development link and Python 3; devices are not probed
 - **Metal Detection**: Automatically enabled on macOS for optimal Apple GPU utilization
 
-**Note**: Vulkan variants are not published for every nightly. When the Vulkan asset is missing the script falls back to the regular Ubuntu build for the same architecture.
+**Note**: Vulkan variants are not published for every nightly. The script then installs the newest release among the latest ten that has a Vulkan build, and only falls back to the regular Ubuntu build for the same architecture when none does. With `--vulkan` it stops with an error instead of falling back.
 
 ## 🆚 Binary Download vs Build from Source
 
@@ -139,7 +155,7 @@ Run the same command again whenever you want to update. To always use the newest
 | **Server Features** | ✅ Full server functionality | ✅ If dependencies met |
 | **Customization** | ❌ Fixed build configuration | ✅ Tailored to your hardware |
 | **Ubuntu ARM64** | ✅ Official nightly assets | ✅ Full support with optimizations |
-| **Latest Features** | 🔄 Latest nightly (`b[NUM]`) | 🔄 Always bleeding edge |
+| **Latest Features** | 🔄 Latest nightly (`b[NUM]`) | 🔄 Latest published nightly (`b[NUM]`) |
 
 ### Recommendations:
 - **Choose Binary Download** if you want quick setup and good performance
@@ -157,10 +173,13 @@ llama-b10582/libggml-base.so
 llama-b10582/LICENSE
 ```
 
-The script moves everything out of that directory into the target directory,
-preserving the symlinks between versioned library names, then marks the
-installed binaries executable. Older archives that nested the payload under
-`llama-*/bin` or `build/bin` are still recognised.
+The script stages everything from that directory inside the target directory,
+preserving the symlinks between versioned library names, marks the binaries
+(detected by their ELF or Mach-O header) executable, then swaps the files into
+place. Files the previous run installed but the new release no longer ships are
+removed, and the installed names are recorded in `.llama-cpp-updater-manifest`.
+Older archives that nested the payload under `llama-*/bin` or `build/bin` are
+still recognised.
 
 ## 🩺 Troubleshooting
 
@@ -197,7 +216,7 @@ installed binaries executable. Older archives that nested the payload under
    - Try building from source: `./update-llama.sh --build-from-source`
    - Verify internet connection
    - Check GitHub releases page manually
-   - The script prints the full asset list of the selected release when nothing matches
+   - When nothing matches, the script prints the `.zip`/`.tar.gz` archives of the newest release
 
 5. **Vulkan detection issues**:
    ```bash
