@@ -1,13 +1,40 @@
+<div align="center">
+
 # llama.cpp Updater & Builder
 
-[![Shell Script Quality Check](https://github.com/mhajder/llama.cpp-updater/workflows/Shell%20Script%20Quality%20Check/badge.svg)](https://github.com/mhajder/llama.cpp-updater/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+**Keep llama.cpp up to date with one command: grab the latest nightly binaries or build from source with GPU acceleration**
+
+[![Shell Script Quality Check](https://github.com/mhajder/llama.cpp-updater/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/mhajder/llama.cpp-updater/actions/workflows/shellcheck.yml)
+[![License](https://img.shields.io/github/license/mhajder/llama.cpp-updater)](https://github.com/mhajder/llama.cpp-updater/blob/main/LICENSE)
+[![Last commit](https://img.shields.io/github/last-commit/mhajder/llama.cpp-updater)](https://github.com/mhajder/llama.cpp-updater/commits/main)
+[![Stars](https://img.shields.io/github/stars/mhajder/llama.cpp-updater?style=flat&logo=github)](https://github.com/mhajder/llama.cpp-updater/stargazers)
+
+[![Bash](https://img.shields.io/badge/Bash-script-4EAA25?logo=gnubash&logoColor=white)](https://github.com/mhajder/llama.cpp-updater/blob/main/update-llama.sh)
+[![Platforms](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-555?logo=linux&logoColor=white)](https://github.com/mhajder/llama.cpp-updater#-supported-systems)
+[![GPU](https://img.shields.io/badge/GPU-CUDA%20%7C%20Vulkan%20%7C%20Metal-76B900)](https://github.com/mhajder/llama.cpp-updater#-supported-systems)
+[![llama.cpp](https://img.shields.io/badge/for-llama.cpp-FF8C00)](https://github.com/ggml-org/llama.cpp)
+
+[Quick start](https://github.com/mhajder/llama.cpp-updater#-quick-start) · [Usage](https://github.com/mhajder/llama.cpp-updater#-usage) · [Supported systems](https://github.com/mhajder/llama.cpp-updater#-supported-systems) · [Troubleshooting](https://github.com/mhajder/llama.cpp-updater#-troubleshooting)
+
+</div>
 
 A powerful shell script that automatically downloads and updates llama.cpp binaries from the latest nightly GitHub release, or builds from source with optimal GPU acceleration. This tool simplifies the process of keeping your llama.cpp installation up-to-date across different platforms and architectures.
 
 Since v0.2.0 llama.cpp publishes both stable `vX.Y.Z` tags and per-commit `b[NUM]` nightly tags. Only the nightlies carry prebuilt binaries, so the script always selects the most recent `b[NUM]` release.
 
-## Features
+## 🚀 Quick start
+
+Download the script, make it executable and install the latest llama.cpp nightly into a directory of your choice:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mhajder/llama.cpp-updater/main/update-llama.sh -o update-llama.sh
+chmod +x update-llama.sh
+./update-llama.sh ~/llama.cpp
+```
+
+Run the same command again whenever you want to update. To always use the newest script, clone the repository instead and `git pull` before running it.
+
+## ✨ Features
 
 - **Cross-platform support**: Works seamlessly on Linux and macOS with full architecture detection
 - **Intelligent architecture detection**: Automatically detects x64 and ARM64 architectures for optimal binary selection
@@ -19,7 +46,7 @@ Since v0.2.0 llama.cpp publishes both stable `vX.Y.Z` tags and per-commit `b[NUM
 - **Clean installation**: Automatically removes temporary files, empty directories, and build artifacts after installation
 - **Comprehensive error handling**: Detailed error messages and recovery suggestions for common issues
 
-## Requirements
+## 📋 Requirements
 
 ### For binary downloads (recommended for quick setup):
 - `curl` or `wget` (for downloading files from GitHub releases)
@@ -44,7 +71,7 @@ Since v0.2.0 llama.cpp publishes both stable `vX.Y.Z` tags and per-commit `b[NUM
   - OpenCL libraries and drivers (alternative GPU acceleration method)
   - Metal framework (macOS only, automatically available on Apple Silicon and Intel Macs)
 
-## Usage
+## 💡 Usage
 
 ### Basic usage (install to current directory):
 ```bash
@@ -75,7 +102,7 @@ Since v0.2.0 llama.cpp publishes both stable `vX.Y.Z` tags and per-commit `b[NUM
 ./update-llama.sh --help
 ```
 
-## Supported Systems
+## 💻 Supported Systems
 
 | OS | Architecture | Binary Packages | Build from Source |
 |---|---|---|---|
@@ -99,7 +126,7 @@ Since v0.2.0 llama.cpp publishes both stable `vX.Y.Z` tags and per-commit `b[NUM
 
 **Note**: Vulkan variants are not published for every nightly. When the Vulkan asset is missing the script falls back to the regular Ubuntu build for the same architecture.
 
-## Binary Download vs Build from Source
+## 🆚 Binary Download vs Build from Source
 
 | Feature | Binary Download | Build from Source |
 |---|---|---|
@@ -118,7 +145,7 @@ Since v0.2.0 llama.cpp publishes both stable `vX.Y.Z` tags and per-commit `b[NUM
 - **Choose Binary Download** if you want quick setup and good performance
 - **Choose Build from Source** if you want maximum performance or have specific GPU requirements
 
-## Release archive layout
+## 📦 Release archive layout
 
 Current llama.cpp assets are `.tar.gz` archives containing a single versioned
 directory, for example `llama-b10582/`, with the binaries and their shared
@@ -135,7 +162,7 @@ preserving the symlinks between versioned library names, then marks the
 installed binaries executable. Older archives that nested the payload under
 `llama-*/bin` or `build/bin` are still recognised.
 
-## Troubleshooting
+## 🩺 Troubleshooting
 
 ### Common Issues
 
@@ -212,7 +239,13 @@ installed binaries executable. Older archives that nested the payload under
    xcode-select --install  # Install command line tools
    ```
 
-## License
+## 🤝 Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](https://github.com/mhajder/llama.cpp-updater/blob/main/CONTRIBUTING.md) for the checks to run and the commit message format, and use the [issue templates](https://github.com/mhajder/llama.cpp-updater/issues/new/choose) for bugs and feature requests.
+
+Found a security problem? Please report it privately as described in [SECURITY.md](https://github.com/mhajder/llama.cpp-updater/blob/main/SECURITY.md).
+
+## 📜 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
