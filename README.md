@@ -4,7 +4,7 @@
 
 **Keep llama.cpp up to date with one command: grab the latest nightly binaries or build from source with GPU acceleration**
 
-[![Shell Script Quality Check](https://github.com/mhajder/llama.cpp-updater/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/mhajder/llama.cpp-updater/actions/workflows/shellcheck.yml)
+[![Prek Checks](https://github.com/mhajder/llama.cpp-updater/actions/workflows/prek.yml/badge.svg)](https://github.com/mhajder/llama.cpp-updater/actions/workflows/prek.yml)
 [![License](https://img.shields.io/github/license/mhajder/llama.cpp-updater)](https://github.com/mhajder/llama.cpp-updater/blob/main/LICENSE)
 [![Last commit](https://img.shields.io/github/last-commit/mhajder/llama.cpp-updater)](https://github.com/mhajder/llama.cpp-updater/commits/main)
 [![Stars](https://img.shields.io/github/stars/mhajder/llama.cpp-updater?style=flat&logo=github)](https://github.com/mhajder/llama.cpp-updater/stargazers)
@@ -280,6 +280,13 @@ still recognised.
 ## 🤝 Contributing
 
 Contributions are welcome. See [CONTRIBUTING.md](https://github.com/mhajder/llama.cpp-updater/blob/main/CONTRIBUTING.md) for the checks to run and the commit message format, and use the [issue templates](https://github.com/mhajder/llama.cpp-updater/issues/new/choose) for bugs and feature requests.
+
+Code checks run through [prek](https://github.com/j178/prek) (a faster drop-in for pre-commit), locally and in CI:
+```bash
+brew install prek       # or: uv tool install prek / pipx install prek
+prek install            # run the hooks on every commit, commit message and push
+prek run --all-files    # run ShellCheck, shfmt, typos and the file checks now
+```
 
 Found a security problem? Please report it privately as described in [SECURITY.md](https://github.com/mhajder/llama.cpp-updater/blob/main/SECURITY.md).
 
