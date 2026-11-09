@@ -46,6 +46,7 @@ Run the same command again whenever you want to update. To always use the newest
 - **Efficient extraction**: Handles both `.tar.gz` and `.zip` assets, and moves the payload out of the archive's `llama-*` wrapper directory (older `llama-*/bin` and `build/bin` layouts are still recognised)
 - **Verified downloads**: Checks each downloaded archive against the sha256 digest GitHub publishes for the asset
 - **Skips unchanged releases**: Does nothing when the latest release is already installed (`--force` reinstalls)
+- **Restart without interrupting work**: Optionally restarts `llama-server` after an update, but only once it has been idle for a set time, without waking a sleeping model (`--restart-cmd`, `--wait-idle`)
 - **Clean installation**: Removes the download, the extracted archive and the source build tree when done, and clears staging directories left by interrupted runs; a lock stops two runs from updating the same directory at once
 - **Comprehensive error handling**: Detailed error messages and recovery suggestions for common issues
 
@@ -112,6 +113,22 @@ Unauthenticated GitHub API requests are limited to 60 per hour per IP address, w
 GITHUB_TOKEN=ghp_yourtoken ./update-llama.sh ./bin
 ```
 `GH_TOKEN` works too. The token is only sent to `api.github.com`, and never appears on a command line.
+
+### Restart llama-server after an update:
+Updating does not disturb a running `llama-server` process: it keeps using the binaries it started with until it is restarted. `--restart-cmd` runs a command of your choice after a successful update, and `--wait-idle` delays it until the server has handled no request for `--idle-seconds` (default 300):
+```bash
+./update-llama.sh --restart-cmd 'sudo systemctl restart llama-server' \
+  --wait-idle http://127.0.0.1:8080 --idle-seconds 1800 /opt/llama.cpp
+```
+On macOS with launchd, use something like `--restart-cmd "launchctl kickstart -k gui/$(id -u)/com.example.llama-server"`.
+
+- **Start `llama-server` with `--metrics`.** The script then watches `GET /metrics`, which neither wakes a sleeping model nor resets its `--sleep-idle-seconds` timer. Without it, the script falls back to `GET /slots`, which keeps the model loaded while the restart waits (a model that is already asleep is still detected without waking it).
+- **Router mode** (`--models-preset`, `--models-dir`) is supported: only loaded models are checked, and never in a way that loads one. Note that a router starts a new `llama-server` process for each model it loads, from the binary at its original path. A model loaded after the update but before the restart therefore runs the new release under the old router. The two builds usually work together, but nothing guarantees it; a shorter wait (`--idle-seconds`, `--idle-timeout`) narrows that window.
+- **API key**: if the server uses `--api-key`, set `LLAMA_API_KEY` (the variable `llama-server` itself reads).
+- **Server down**: if nothing answers at the URL, there is nothing to interrupt, so the restart runs right away.
+- **Timeout**: `--idle-timeout N` stops waiting after N seconds and exits with status 1 without restarting. A skipped, failed or interrupted restart is remembered and retried by the next run with `--restart-cmd`, even when no newer release is out. While a run waits, it keeps its lock, so a second run started meanwhile (for example by cron) reports "Another update is already running" and exits.
+
+A request can still arrive in the moment between the last idle check and the restart; only `llama-server` itself could rule that out.
 
 ### Help:
 ```bash
@@ -253,6 +270,12 @@ still recognised.
    brew install git cmake pkg-config
    xcode-select --install  # Install command line tools
    ```
+
+9. **`--wait-idle` problems**:
+   - "GET /metrics is not available, falling back to GET /slots": restart `llama-server` with `--metrics` so waiting for the restart does not keep the model loaded
+   - "Cannot tell whether llama-server is idle: GET /props failed": the server uses `--api-key`; set `LLAMA_API_KEY`
+   - "neither GET /metrics nor GET /slots answered": the server was started with `--no-slots` and without `--metrics`; add `--metrics`
+   - The script keeps waiting: something is still sending requests, or a model is loading; set `--idle-timeout` to give up and retry on the next run
 
 ## 🤝 Contributing
 

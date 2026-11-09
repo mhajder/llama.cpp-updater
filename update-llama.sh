@@ -159,18 +159,22 @@ select_downloader() {
 
 # Function to fetch a URL into a file ("-" for stdout)
 #
-# Usage: http_fetch URL OUTPUT [quiet] [TOKEN]
+# Usage: http_fetch URL OUTPUT [quiet] [TOKEN] [TIMEOUT]
 # Without --fail an HTTP error page is written out as if it were the
 # requested data. A token goes through stdin or a private config file inside
 # TEMP_DIR, never the command line, where other users could see it in ps.
+# TIMEOUT (seconds) also limits wget to a single attempt.
 http_fetch() {
-    local url="$1" output="$2" quiet="$3" token="$4"
+    local url="$1" output="$2" quiet="$3" token="$4" timeout="$5"
     local args=()
 
     if [ "$DOWNLOADER" = "curl" ]; then
         args=(-fL -o "$output")
         if [ -n "$quiet" ]; then
             args+=(-sS)
+        fi
+        if [ -n "$timeout" ]; then
+            args+=(--max-time "$timeout")
         fi
         if [ -n "$token" ]; then
             printf 'Authorization: Bearer %s\n' "$token" | curl "${args[@]}" -H @- "$url"
@@ -181,6 +185,9 @@ http_fetch() {
         args=(-O "$output")
         if [ -n "$quiet" ]; then
             args+=(-q)
+        fi
+        if [ -n "$timeout" ]; then
+            args+=(--timeout="$timeout" --tries=1)
         fi
         if [ -n "$token" ]; then
             # WGETRC replaces the user's config file, so carry its settings
@@ -409,6 +416,10 @@ SWAPPED_IN=()      # names moved (or about to be moved) from STAGE_DIR into the 
 BACKED_UP=()       # names moved (or about to be moved) from the target into BACKUP_DIR
 INSTALL_DONE=""
 
+# Marks a target whose llama-server still has to be restarted onto the new
+# binaries, so a restart that timed out or failed is retried by the next run
+RESTART_MARKER_NAME=".llama-cpp-updater.restart-pending"
+
 # Function to check whether a name is among the remaining arguments
 contains() {
     local needle="$1" item
@@ -556,6 +567,11 @@ commit_install() {
     done
 
     INSTALL_DONE=1
+
+    if [ -n "$RESTART_CMD" ]; then
+        : >"$target_dir/$RESTART_MARKER_NAME" ||
+            print_warning "Cannot record the pending restart; an interrupted restart will not be retried"
+    fi
 
     # Without a manifest (a first run, or a directory filled by an older
     # version of this script) nothing is known about the existing files, so
@@ -867,6 +883,294 @@ build_from_source() {
     print_info "Successfully built and installed llama.cpp $latest_tag from source"
 }
 
+# Restarting llama-server after an update (--restart-cmd, --wait-idle)
+#
+# A running llama-server keeps the binaries it started with, so an update
+# never disturbs it; it only runs the new release once restarted. With
+# --wait-idle the restart waits until the server has handled no request for
+# --idle-seconds. The server is watched through endpoints that leave it alone:
+# GET /props reports sleep without waking it, and GET /metrics neither wakes
+# it nor resets its --sleep-idle-seconds timer. GET /slots does both, so it is
+# only a fallback for servers started without --metrics.
+POLL_INTERVAL=5    # seconds between two looks at the server
+SERVER_TIMEOUT=30  # seconds a single request to the server may take
+SERVER_STATE=""    # set by server_activity: idle, busy, down or error
+SERVER_DETAIL=""   # what made SERVER_STATE what it is
+SLOTS_WARNED=""
+COUNTERS_SEEN=""   # "LABEL<TAB>COUNTERS" lines kept by counters_changed
+
+# Function to percent-encode a string for use in a URL query
+url_encode() {
+    local LC_ALL=C
+    local str="$1" out="" c i
+    for ((i = 0; i < ${#str}; i++)); do
+        c="${str:i:1}"
+        case "$c" in
+        [A-Za-z0-9._~-]) out+="$c" ;;
+        *) out+=$(printf '%%%02X' "'$c") ;;
+        esac
+    done
+    printf '%s' "$out"
+}
+
+# Function to send a GET request to the server given by --wait-idle
+#
+# Usage: server_get PATH
+# Prints the response body. Returns 0 for a successful response, 2 when the
+# server cannot be reached at all and 1 for any other failure (an HTTP error
+# status, a timeout). LLAMA_API_KEY is sent as the bearer token, the same
+# variable llama-server reads its --api-key from (which may list several
+# comma-separated keys, any one of which is accepted).
+server_get() {
+    local status=0 messages="" key="${LLAMA_API_KEY:-}"
+    key="${key%%,*}"
+
+    if [ "$DOWNLOADER" = "curl" ]; then
+        http_fetch "$WAIT_IDLE_URL$1" - quiet "$key" "$SERVER_TIMEOUT" 2>/dev/null || status=$?
+        case "$status" in
+        0) return 0 ;;
+        6 | 7) return 2 ;; # unresolvable host, connection refused
+        *) return 1 ;;
+        esac
+    fi
+
+    # wget exits with 4 both when nothing answers and when a busy server is
+    # too slow to, so its (untranslated) messages tell the two apart
+    { messages=$(LC_ALL=C http_fetch "$WAIT_IDLE_URL$1" - "" "$key" "$SERVER_TIMEOUT" 2>&1 >&3); } 3>&1 || status=$?
+    if [ "$status" -eq 0 ]; then
+        return 0
+    elif [ "$status" -eq 4 ] &&
+        echo "$messages" | grep -qE 'Connection refused|unable to resolve host|No route to host'; then
+        return 2
+    fi
+    return 1
+}
+
+# Function to list the models of a router-mode server as "STATUS ID" lines
+#
+# Each model object in GET /models holds its "id" ahead of its
+# "status": {"value": ...}, so the two are paired by document order.
+list_router_models() {
+    echo "$1" |
+        grep -oE '"(id|value)": *"[^"]*"' |
+        sed -E 's/^"([a-z]+)": *"(.*)"$/\1 \2/' |
+        awk '$1 == "id" { id = substr($0, 4); next }
+             id != "" { print $2, id; id = "" }'
+}
+
+# Function to check whether one model is handling requests
+#
+# Usage: probe_model [MODEL]
+# MODEL selects a model of a router-mode server; autoload=false keeps the
+# query from loading a model that is not loaded. Sets SERVER_STATE.
+probe_model() {
+    local model="$1" query="" body label="llama-server"
+
+    if [ -n "$model" ]; then
+        query="?model=$(url_encode "$model")&autoload=false"
+        label="model $model"
+    fi
+
+    # Prints "BUSY COUNTERS": BUSY is 1 while requests are being processed or
+    # queued, COUNTERS the totals that every request advances
+    local summary busy counters
+    if body=$(server_get "/metrics$query") &&
+        summary=$(echo "$body" | awk '
+            /^llamacpp:requests_(processing|deferred) / { n += $2; found = 1 }
+            /^llamacpp:(n_decode_total|prompt_tokens_total|tokens_predicted_total) / { c = c "," $2 }
+            END { if (!found) exit 1; print (n > 0), c }'); then
+        read -r busy counters <<<"$summary"
+    elif body=$(server_get "/slots$query"); then
+        if [ -z "$SLOTS_WARNED" ]; then
+            print_warning "GET /metrics is not available, falling back to GET /slots, which keeps the model from sleeping while the restart waits; start llama-server with --metrics to avoid this"
+            SLOTS_WARNED=1
+        fi
+        busy=0
+        if echo "$body" | grep -qE '"is_processing": *true'; then
+            busy=1
+        fi
+        counters=$(echo "$body" | grep -oE '"(id_task|n_decoded)": *-?[0-9]+' | tr -d ' \n')
+    else
+        SERVER_STATE="error"
+        SERVER_DETAIL="neither GET /metrics nor GET /slots answered for $label"
+        return 0
+    fi
+
+    # A request that starts and ends between two looks is never seen being
+    # processed, but it does move the counters
+    if counters_changed "$label" "$counters" || [ "$busy" = "1" ]; then
+        SERVER_STATE="busy"
+        SERVER_DETAIL="$label is handling requests"
+    else
+        SERVER_STATE="idle"
+    fi
+}
+
+# Function to remember a model's activity counters
+#
+# Usage: counters_changed LABEL COUNTERS
+# Returns 0 if COUNTERS differ from what the previous look at LABEL saw.
+counters_changed() {
+    local label="$1" counters="$2" tab=$'\t' line seen="" rest=""
+    while IFS= read -r line; do
+        if [ "${line%%"$tab"*}" = "$label" ]; then
+            seen="${line#*"$tab"}"
+        elif [ -n "$line" ]; then
+            rest+="$line"$'\n'
+        fi
+    done <<<"$COUNTERS_SEEN"
+    COUNTERS_SEEN="$rest$label$tab$counters"
+    [ -n "$seen" ] && [ "$seen" != "$counters" ]
+}
+
+# Function to take one look at the server and set SERVER_STATE
+#
+# down: not reachable, so there is nothing to interrupt
+# busy: loading a model or handling a request
+# idle: handling nothing (a sleeping server counts as idle)
+# error: reachable, but its activity cannot be read (e.g. a wrong API key)
+server_activity() {
+    local status=0 body models state id
+
+    SERVER_DETAIL=""
+    # /health needs no API key and answers 503 while a model is loading
+    server_get /health >/dev/null || status=$?
+    if [ "$status" -eq 2 ]; then
+        SERVER_STATE="down"
+        return 0
+    elif [ "$status" -ne 0 ]; then
+        SERVER_STATE="busy"
+        SERVER_DETAIL="GET /health is not OK (loading a model?)"
+        return 0
+    fi
+
+    if ! body=$(server_get /props); then
+        SERVER_STATE="error"
+        SERVER_DETAIL="GET /props failed (if the server uses --api-key, set LLAMA_API_KEY)"
+        return 0
+    fi
+
+    if ! echo "$body" | grep -qE '"role": *"router"'; then
+        if echo "$body" | grep -qE '"is_sleeping": *true'; then
+            SERVER_STATE="idle"
+        else
+            probe_model ""
+        fi
+        return 0
+    fi
+
+    # Router mode: only a loaded model can be handling a request
+    if ! body=$(server_get /models); then
+        SERVER_STATE="error"
+        SERVER_DETAIL="GET /models failed"
+        return 0
+    fi
+    models=$(list_router_models "$body")
+    SERVER_STATE="idle"
+    while read -r state id; do
+        case "$state" in
+        loading | downloading)
+            SERVER_STATE="busy"
+            SERVER_DETAIL="model $id is $state"
+            return 0
+            ;;
+        loaded)
+            probe_model "$id"
+            if [ "$SERVER_STATE" != "idle" ]; then
+                return 0
+            fi
+            ;;
+        esac
+    done <<<"$models"
+}
+
+# Function to wait until the server has been idle for IDLE_SECONDS
+#
+# Returns non-zero if the server stayed busy past IDLE_TIMEOUT or its
+# activity could not be read three times in a row.
+wait_until_idle() {
+    local start=$SECONDS idle_since="" last_report="" errors=0 waited
+
+    print_info "Waiting until llama-server at $WAIT_IDLE_URL has been idle for ${IDLE_SECONDS}s"
+    while true; do
+        server_activity
+        case "$SERVER_STATE" in
+        down)
+            print_warning "llama-server at $WAIT_IDLE_URL is not reachable, so there is nothing to interrupt"
+            return 0
+            ;;
+        error)
+            errors=$((errors + 1))
+            if [ "$errors" -ge 3 ]; then
+                print_error "Cannot tell whether llama-server is idle: $SERVER_DETAIL"
+                return 1
+            fi
+            ;;
+        busy)
+            errors=0
+            idle_since=""
+            ;;
+        idle)
+            errors=0
+            if [ -z "$idle_since" ]; then
+                idle_since=$SECONDS
+            fi
+            if [ $((SECONDS - idle_since)) -ge "$IDLE_SECONDS" ]; then
+                return 0
+            fi
+            ;;
+        esac
+
+        waited=$((SECONDS - start))
+        if [ "$IDLE_TIMEOUT" -gt 0 ] && [ "$waited" -ge "$IDLE_TIMEOUT" ]; then
+            print_warning "llama-server has not been idle for ${IDLE_SECONDS}s within --idle-timeout ${IDLE_TIMEOUT}s"
+            return 1
+        fi
+        if [ "$SERVER_STATE" = "busy" ] &&
+            { [ -z "$last_report" ] || [ $((SECONDS - last_report)) -ge 60 ]; }; then
+            print_info "Still waiting after ${waited}s: ${SERVER_DETAIL:-llama-server is busy}"
+            last_report=$SECONDS
+        fi
+        sleep "$POLL_INTERVAL"
+    done
+}
+
+# Function to restart llama-server after an update, or after an earlier
+# update whose restart is still pending
+restart_server() {
+    local marker="$INSTALL_TARGET/$RESTART_MARKER_NAME"
+
+    if [ "$INSTALL_DONE" != "1" ]; then
+        if [ ! -e "$marker" ]; then
+            return 0
+        fi
+        print_info "The restart after an earlier update is still pending"
+    fi
+
+    if [ -n "$WAIT_IDLE_URL" ]; then
+        # The wait can take hours, so free the space held by the download, the
+        # build tree and the replaced files first (TEMP_DIR itself is still
+        # needed for request configs). After main has returned nothing is
+        # left to roll back.
+        rm -rf "$STAGE_DIR" "$BACKUP_DIR" "${TEMP_DIR:?}"/*
+        STAGE_DIR=""
+        BACKUP_DIR=""
+    fi
+
+    if [ -n "$WAIT_IDLE_URL" ] && ! wait_until_idle; then
+        print_warning "llama-server was not restarted; the next run with --restart-cmd will try again"
+        exit 1
+    fi
+
+    print_info "Restarting llama-server: $RESTART_CMD"
+    if ! sh -c "$RESTART_CMD"; then
+        print_error "The restart command failed; the next run with --restart-cmd will try again"
+        exit 1
+    fi
+    rm -f "$marker"
+    print_info "llama-server restarted"
+}
+
 # Temporary directory removed by the EXIT trap. It is global because the trap
 # runs after main has returned, when main's local variables no longer exist.
 TEMP_DIR=""
@@ -1063,11 +1367,19 @@ print_usage() {
     echo "  --force               Reinstall even if the latest release is already installed"
     echo "  -h, --help            Show this help message"
     echo ""
+    echo "Restarting llama-server after an update:"
+    echo "  --restart-cmd CMD     Run CMD (through sh -c) after a successful update"
+    echo "  --wait-idle URL       Before restarting, wait until the llama-server at URL is idle"
+    echo "  --idle-seconds N      Idle time --wait-idle requires (default: 300)"
+    echo "  --idle-timeout N      Stop waiting after N seconds and skip the restart (default: 0, wait forever)"
+    echo "                        A skipped or failed restart is retried by the next run with --restart-cmd"
+    echo ""
     echo "Arguments:"
     echo "  target_directory  Directory to install binaries (default: current directory)"
     echo ""
     echo "Environment:"
     echo "  GITHUB_TOKEN      GitHub token for API requests (raises the rate limit; GH_TOKEN also works)"
+    echo "  LLAMA_API_KEY     API key for --wait-idle, if llama-server was started with --api-key"
     echo ""
     echo "Examples:"
     echo "  $0                              # Download latest bleeding-edge release in current directory"
@@ -1076,6 +1388,9 @@ print_usage() {
     echo "  $0 --build-from-source ./bin    # Build from source and install in ./bin"
     echo "  $0 --vulkan ./bin               # Force Vulkan build for Ubuntu"
     echo "  $0 --force-regular ./bin        # Force regular Ubuntu build (no Vulkan)"
+    echo "  $0 --restart-cmd 'systemctl restart llama-server' \\"
+    echo "     --wait-idle http://127.0.0.1:8080 --idle-seconds 1800 ./bin"
+    echo "                                  # Update, then restart once idle for 30 minutes"
 }
 
 # Parse command line arguments
@@ -1084,6 +1399,10 @@ FORCE_REGULAR=""
 FORCE_VULKAN=""
 FORCE_INSTALL=""
 TARGET_DIR=""
+RESTART_CMD=""
+WAIT_IDLE_URL=""
+IDLE_SECONDS=""
+IDLE_TIMEOUT=""
 
 while [ $# -gt 0 ]; do
     case $1 in
@@ -1102,6 +1421,19 @@ while [ $# -gt 0 ]; do
     --force)
         FORCE_INSTALL="1"
         shift
+        ;;
+    --restart-cmd | --wait-idle | --idle-seconds | --idle-timeout)
+        if [ $# -lt 2 ] || [ -z "$2" ]; then
+            echo "Option $1 needs a value. Use --help for usage information." >&2
+            exit 1
+        fi
+        case $1 in
+        --restart-cmd) RESTART_CMD="$2" ;;
+        --wait-idle) WAIT_IDLE_URL="${2%/}" ;;
+        --idle-seconds) IDLE_SECONDS="$2" ;;
+        --idle-timeout) IDLE_TIMEOUT="$2" ;;
+        esac
+        shift 2
         ;;
     -h | --help)
         print_usage
@@ -1130,5 +1462,40 @@ if [ "$FORCE_REGULAR" = "1" ] && [ "$FORCE_VULKAN" = "1" ]; then
     exit 1
 fi
 
+if [ -n "$WAIT_IDLE_URL" ] || [ -n "$IDLE_SECONDS" ] || [ -n "$IDLE_TIMEOUT" ]; then
+    if [ -z "$RESTART_CMD" ]; then
+        print_error "--wait-idle, --idle-seconds and --idle-timeout need --restart-cmd"
+        exit 1
+    fi
+    if [ -z "$WAIT_IDLE_URL" ]; then
+        print_error "--idle-seconds and --idle-timeout need --wait-idle"
+        exit 1
+    fi
+fi
+if [ -n "$WAIT_IDLE_URL" ] && [[ ! $WAIT_IDLE_URL =~ ^https?:// ]]; then
+    print_error "--wait-idle needs an http:// or https:// URL, e.g. http://127.0.0.1:8080"
+    exit 1
+fi
+for value in "${IDLE_SECONDS:-300}" "${IDLE_TIMEOUT:-0}"; do
+    # At most 9 digits, so the arithmetic below cannot overflow
+    if [[ ! $value =~ ^0*[0-9]{1,9}$ ]]; then
+        print_error "--idle-seconds and --idle-timeout need a whole number of seconds (at most 999999999), got: $value"
+        exit 1
+    fi
+done
+# 10# keeps a leading zero from being read as octal
+IDLE_SECONDS=$((10#${IDLE_SECONDS:-300}))
+IDLE_TIMEOUT=$((10#${IDLE_TIMEOUT:-0}))
+# Idle time is only counted from the first look, so a shorter timeout could
+# never let a running server qualify
+if [ "$IDLE_TIMEOUT" -gt 0 ] && [ "$IDLE_TIMEOUT" -lt "$IDLE_SECONDS" ]; then
+    print_error "--idle-timeout ($IDLE_TIMEOUT) must not be shorter than --idle-seconds ($IDLE_SECONDS)"
+    exit 1
+fi
+
 # Run main function
 main "$TARGET_DIR"
+
+if [ -n "$RESTART_CMD" ]; then
+    restart_server
+fi
