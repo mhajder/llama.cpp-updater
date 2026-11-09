@@ -196,7 +196,9 @@ http_fetch() {
             wgetrc=$(mktemp "$TEMP_DIR/wgetrc.XXXXXX")
             cat "${WGETRC:-$HOME/.wgetrc}" >"$wgetrc" 2>/dev/null || true
             printf '\nheader = Authorization: Bearer %s\n' "$token" >>"$wgetrc"
-            WGETRC="$wgetrc" wget "${args[@]}" "$url" || status=$?
+            # wget sends custom headers on to wherever a redirect points
+            # (curl drops them when the host changes), so do not follow any
+            WGETRC="$wgetrc" wget --max-redirect=0 "${args[@]}" "$url" || status=$?
             rm -f "$wgetrc"
             return "$status"
         else
