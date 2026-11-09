@@ -206,7 +206,7 @@ still recognised.
    ```bash
    # On Ubuntu/Debian
    sudo apt-get install curl tar
-   
+
    # On macOS with Homebrew
    brew install curl
    ```
@@ -215,10 +215,10 @@ still recognised.
    ```bash
    # Essential build tools (Ubuntu/Debian)
    sudo apt-get install git cmake build-essential
-   
+
    # Optional but recommended libraries (Ubuntu/Debian)
    sudo apt-get install libssl-dev zlib1g-dev
-   
+
    # On macOS with Homebrew
    brew install git cmake
    ```
@@ -239,7 +239,7 @@ still recognised.
    ```bash
    # Install Vulkan tools for detection
    sudo apt-get install vulkan-utils
-   
+
    # Force regular build if Vulkan causes issues
    ./update-llama.sh --force-regular
    ```
@@ -262,10 +262,10 @@ still recognised.
    sudo apt-get install build-essential git cmake \
      libssl-dev zlib1g-dev pkg-config \
      vulkan-utils mesa-vulkan-drivers
-   
+
    # Essential build environment (basic requirements)
    sudo apt-get install build-essential git cmake
-   
+
    # macOS complete setup
    brew install git cmake pkg-config
    xcode-select --install  # Install command line tools

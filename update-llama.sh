@@ -892,12 +892,12 @@ build_from_source() {
 # GET /props reports sleep without waking it, and GET /metrics neither wakes
 # it nor resets its --sleep-idle-seconds timer. GET /slots does both, so it is
 # only a fallback for servers started without --metrics.
-POLL_INTERVAL=5    # seconds between two looks at the server
-SERVER_TIMEOUT=30  # seconds a single request to the server may take
-SERVER_STATE=""    # set by server_activity: idle, busy, down or error
-SERVER_DETAIL=""   # what made SERVER_STATE what it is
+POLL_INTERVAL=5   # seconds between two looks at the server
+SERVER_TIMEOUT=30 # seconds a single request to the server may take
+SERVER_STATE=""   # set by server_activity: idle, busy, down or error
+SERVER_DETAIL=""  # what made SERVER_STATE what it is
 SLOTS_WARNED=""
-COUNTERS_SEEN=""   # "LABEL<TAB>COUNTERS" lines kept by counters_changed
+COUNTERS_SEEN="" # "LABEL<TAB>COUNTERS" lines kept by counters_changed
 
 # Function to percent-encode a string for use in a URL query
 url_encode() {
